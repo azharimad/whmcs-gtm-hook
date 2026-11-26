@@ -34,10 +34,10 @@ The prefix of the ID you load decides what the container may run ([Google's rule
 
 | ID used to load | Allowed tags |
 |---|---|
-| `GTM-…` | Everything: Google tags, third-party tags (Meta, TikTok), custom HTML/JS |
+| `GTM-…` | Everything: Google tags, third-party tags, custom HTML/JS |
 | `GT-…` / `AW-…` / `G-…` | **Google-only** — no third-party or custom scripts |
 
-So: if your container list only offers `AW-…` and `GT-…`, you can track GA4 + Ads fine, but you cannot add Meta Pixel or custom HTML until you create a real `GTM-…` container (**Admin → Create Container**) and load that ID instead.
+So: if your container list only offers `AW-…` and `GT-…`, you can track GA4 + Ads fine, but you cannot add third-party tags or custom HTML until you create a real `GTM-…` container (**Admin → Create Container**) and load that ID instead.
 
 This hook handles both: it loads whatever container ID you give it through `gtm.js`, and exposes `hm_restricted` in the data layer so you can see which mode the page is in.
 

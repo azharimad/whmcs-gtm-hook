@@ -24,7 +24,7 @@
  * Sejak Google menyatukan Google tag dengan Tag Manager, container bisa
  * di-load memakai ID berprefix produk (GT-/AW-/G-), tapi container seperti itu
  * HANYA boleh menjalankan tag milik Google ("Google-only"). Untuk tag pihak
- * ketiga (Meta, TikTok, custom HTML), container harus di-load dengan ID GTM-.
+ * ketiga (pixel, chat widget, custom HTML), container harus di-load dengan ID GTM-.
  * Sumber: support.google.com/tagmanager/answer/17070049
  *
  * Mode:
