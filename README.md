@@ -55,6 +55,42 @@ The restriction comes from the ID prefix, not from a setting you can toggle. To 
 
 If you only ever need Google tags (GA4, Ads, Floodlight), the `GT-` container is fine — the restriction only blocks third-party and custom HTML tags.
 
+## Two sites: marketing website + WHMCS
+
+The same container serves both, but the installation differs:
+
+| Site | How the container loads |
+|---|---|
+| Marketing website (WordPress, static, landing pages) | The container snippet in `<head>` of every page — `gtm.js` + `noscript` from **Admin → Install Google Tag Manager**, or a GTM plugin |
+| WHMCS | `gtm.php` in `includes/hooks/` — never the raw snippet |
+
+Rules that prevent double counting:
+
+- One page = one container load. If WHMCS has the hook and a pasted snippet, every pageview and purchase is counted twice.
+- A `gtag.js` snippet that loads a `GTM-` ID is not the documented path for containers: use the `gtm.js` snippet with the `noscript` fallback.
+- Use one container for both sites, or separate containers per site — both work. Separate containers make per-site permissions and versioning easier.
+
+### Keeping ad attribution across the two hosts
+
+An ad click lands on the marketing site with `gclid`, but the order finishes on WHMCS — a different host. Unless the click ID travels with the link, Ads cannot attribute that purchase.
+
+`snippets/gclid-forward.js` copies `gclid` / `gbraid` / `wbraid` / `dclid` and the `utm_*` parameters from the landing URL onto every link that points at WHMCS (`/cart.php`, `clientarea.php`, `billing.`, `/order`, ...). Install it on the **marketing site only**:
+
+```html
+<script src="/assets/gclid-forward.js" defer></script>
+```
+
+Adjust `LINK_PATTERNS` to match your own WHMCS URLs. Tested with `node tests/gclid-forward.test.js` (11 assertions).
+
+Also configure **GA4 → Admin → Data Streams → Configure tag settings → Configure your domains** with both hosts, so the `_ga` cookie survives the hop and one session spans both sites.
+
+For Ads, either:
+
+- put the Conversion Tracking tag (`AW-…` + label) in the container and fire it on `purchase` from WHMCS, or
+- count a softer conversion (order button click) on the marketing site and treat the WHMCS purchase as a separate, more valuable action.
+
+Do not use both a GTM Ads conversion tag and an imported GA4 conversion for the same action — Ads will count it twice.
+
 ## Install
 
 ```bash
