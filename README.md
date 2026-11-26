@@ -1,5 +1,7 @@
 # WHMCS Google Tag Manager + GA4 Hook
 
+[![tests](https://github.com/azharimad/whmcs-gtm-hook/actions/workflows/tests.yml/badge.svg)](https://github.com/azharimad/whmcs-gtm-hook/actions/workflows/tests.yml)
+
 One update-safe hook file that wires **Google Tag Manager** and **GA4** together for WHMCS — no template edits, no addon module, survives theme changes and WHMCS upgrades.
 
 IDs live in one place (this file), and the GA4 Measurement ID is pushed into the data layer, so GTM reads it as a variable instead of you pasting it into every tag.
