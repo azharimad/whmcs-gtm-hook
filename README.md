@@ -228,6 +228,12 @@ window.dataLayer.filter(e => e.event === 'purchase')
 - Product-prefixed containers (`GT-`, `AW-`) are Google-only. Third-party tags need a `GTM-` container.
 - The context push happens before the container starts, so `hm_page` / `hm_logged_in` are available to tags on the first page view; they are overwritten on each navigation.
 
+## Disclaimer
+
+Not affiliated with, endorsed by, or sponsored by Google LLC. Google Tag Manager, Google Analytics and Google Ads are trademarks of Google LLC; the names are used here only to describe what this hook integrates with.
+
+The software is provided "as is", without warranty of any kind. You install it on systems you control and remain responsible for the data you collect, for the consent notices you show your visitors, and for compliance with the policies of the analytics and advertising products you use.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
