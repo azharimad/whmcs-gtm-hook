@@ -74,13 +74,34 @@ Rules that prevent double counting:
 
 An ad click lands on the marketing site with `gclid`, but the order finishes on WHMCS — a different host. Unless the click ID travels with the link, Ads cannot attribute that purchase.
 
-`snippets/gclid-forward.js` copies `gclid` / `gbraid` / `wbraid` / `dclid` and the `utm_*` parameters from the landing URL onto every link that points at WHMCS (`/cart.php`, `clientarea.php`, `billing.`, `/order`, ...). Install it on the **marketing site only**:
+`snippets/gclid-forward.js` carries `gclid` / `gbraid` / `wbraid` / `dclid` and the `utm_*` parameters from the landing URL onto the links that lead to the portal. Install it on the **marketing site only**:
 
 ```html
-<script src="/assets/gclid-forward.js" defer></script>
+<script src="/gclid-forward.js" defer></script>
 ```
 
-Adjust `LINK_PATTERNS` to match your own WHMCS URLs. Tested with `node tests/gclid-forward.test.js` (11 assertions).
+Configure it by editing `CONFIG` at the top of the file:
+
+| Key | Purpose |
+|---|---|
+| `hosts` | Portal hostname(s), substring match. Set this — it is the reliable way: `['portal.example.com']` |
+| `patterns` | Fallback URL substrings used when `hosts` is empty (`/cart.php`, `/order`, ...) |
+| `carry` | Parameters to forward |
+| `persist` | Remember first touch in `sessionStorage`, so later pages without the parameters still forward them |
+| `debug` | Log every decoration to the console |
+
+It decorates anchors on load, again on click (covers links rendered later), and wraps `window.open`. Tested with `node tests/gclid-forward.test.js` (19 assertions).
+
+If the parameters do not arrive, open the browser console on the marketing site:
+
+```js
+__gclidForward.debug('https://portal.example.com/cart.php')
+```
+
+- `__gclidForward is not defined` → the script never loaded (cache, minifier, or the snippet was not added to that page)
+- `carriedParams: {}` → the page URL has no `gclid`/`utm_*` and nothing was stored earlier in the session
+- `portalLinks: []` → `hosts` / `patterns` do not match your portal link
+- `matchingBy: "patterns"` with a wrong-looking link → set `hosts` instead
 
 Also configure **GA4 → Admin → Data Streams → Configure tag settings → Configure your domains** with both hosts, so the `_ga` cookie survives the hop and one session spans both sites.
 
