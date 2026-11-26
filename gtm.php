@@ -15,16 +15,23 @@
  * Google di dalam GTM bisa memakai {{DL - hm_ga4_id}}.
  *
  * Prefix ID yang dikenal:
- *   GTM-  container Tag Manager          -> HM_GTM_CONTAINER_ID
- *   G-    GA4 measurement ID             -> HM_GA4_MEASUREMENT_ID
- *   GT-   Google tag payung (GA4 + Ads)  -> HM_GOOGLE_TAG_ID
- *   AW-   Google Ads conversion ID       -> HM_GOOGLE_TAG_ID
+ *   GTM-  container Tag Manager, semua tipe tag diizinkan
+ *   GT-   Google tag payung (GA4 + Ads)
+ *   AW-   Google Ads conversion ID
+ *   G-    GA4 measurement ID
+ *   DC-   Floodlight
+ *
+ * Sejak Google menyatukan Google tag dengan Tag Manager, container bisa
+ * di-load memakai ID berprefix produk (GT-/AW-/G-), tapi container seperti itu
+ * HANYA boleh menjalankan tag milik Google ("Google-only"). Untuk tag pihak
+ * ketiga (Meta, TikTok, custom HTML), container harus di-load dengan ID GTM-.
+ * Sumber: support.google.com/tagmanager/answer/17070049
  *
  * Mode:
- *   auto -> GTM kalau container valid; kalau tidak, gtag.js kalau ada
- *           G- / GT- / AW-; kalau tidak ada apa-apa -> off.
- *   gtm  -> hanya container GTM (tag GA4 dikelola di dalam GTM).
- *   gtag -> gtag.js langsung, tanpa GTM (fallback / setup cepat).
+ *   auto -> container kalau HM_GTM_CONTAINER_ID valid (prefix apa pun di atas);
+ *           kalau tidak, gtag.js kalau ada G- / GT- / AW-; kalau tidak -> off.
+ *   gtm  -> container via gtm.js (tag GA4 dikelola di dalam GTM).
+ *   gtag -> gtag.js langsung, tanpa container.
  *   off  -> tidak tracking sama sekali.
  * -----------------------------------------------------------------------------
  */
@@ -37,8 +44,8 @@ if (!defined('WHMCS')) {
 
 const HM_GTM_MODE             = 'auto';          // auto | gtm | gtag | off
 const HM_GTM_CONTAINER_ID     = 'GTM-XXXXXXX';   // Admin > Install Google Tag Manager
-const HM_GA4_MEASUREMENT_ID   = 'G-XXXXXXXXXX';  // GA4 > Admin > Data Streams
-const HM_GOOGLE_TAG_ID        = '';              // opsional: GT-... atau AW-...
+const HM_GA4_MEASUREMENT_ID   = 'G-XXXXXXXXXX';  // GA4 > Admin > Data Streams (mode gtag)
+const HM_GOOGLE_TAG_ID        = '';              // opsional: GT-... atau AW-... (mode gtag)
 
 const HM_GTM_SEND_PURCHASE    = true;             // event purchase di order-complete
 const HM_GTM_CONSENT_DEFAULT  = 'granted';        // granted | denied
@@ -52,7 +59,19 @@ function hm_gtm_valid_gtm(): string
     if ($id === '' || $id === 'GTM-XXXXXXX') {
         return '';
     }
-    return preg_match('/^GTM-[A-Z0-9]{4,}$/i', $id) ? strtoupper($id) : '';
+    // Container bisa di-load lewat ID GTM-, atau ID produk (GT-/AW-/G-/DC-)
+    // untuk container hasil upgrade Google tag.
+    return preg_match('/^(GTM|GT|AW|G|DC)-[A-Z0-9]{4,}$/i', $id) ? strtoupper($id) : '';
+}
+
+/**
+ * Container berprefix produk hanya boleh menjalankan tag milik Google.
+ * Untuk tag pihak ketiga, pakai ID GTM-.
+ */
+function hm_gtm_container_restricted(): bool
+{
+    $id = hm_gtm_valid_gtm();
+    return $id !== '' && stripos($id, 'GTM-') !== 0;
 }
 
 function hm_gtm_valid_ga4(): string
@@ -146,6 +165,8 @@ function hm_gtm_context(array $vars): array
     return [
         'hm_ga4_id'        => hm_gtm_valid_ga4(),
         'hm_google_tag_id' => hm_gtm_valid_google_tag(),
+        'hm_container_id'  => hm_gtm_valid_gtm(),
+        'hm_restricted'    => hm_gtm_container_restricted(),
         'hm_channel'       => hm_gtm_mode(),
         'hm_page'          => (string) ($vars['templatefile'] ?? $vars['filename'] ?? ''),
         'hm_logged_in'     => !empty($_SESSION['uid']),

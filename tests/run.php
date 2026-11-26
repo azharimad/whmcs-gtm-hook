@@ -54,6 +54,8 @@ $suites = [
     'dummy IDs (auto -> off)'      => [$make($src), 'off', [], 'empty', ''],
     'GTM only'                     => [$make(variant($src, ['HM_GTM_CONTAINER_ID' => 'GTM-TEST123'])), 'gtm', [], 'gtm', ''],
     'GTM + GA4 linked'             => [$make(variant($src, $linked)), 'gtm', [], 'gtm', ''],
+    'Google tag container (GT-)'   => [$make(variant($src, ['HM_GTM_CONTAINER_ID' => 'GT-CONTAINER1'])), 'gtm', [], 'gtm', ''],
+    'Ads container (AW-)'          => [$make(variant($src, ['HM_GTM_CONTAINER_ID' => 'AW-CONTAINER1'])), 'gtm', [], 'gtm', ''],
     'GA4 only (gtag fallback)'     => [$make(variant($src, ['HM_GA4_MEASUREMENT_ID' => 'G-TEST456'])), 'gtag', [], 'gtag', 'G-TEST456'],
     'Google tag GT- fallback'      => [$make(variant($src, ['HM_GOOGLE_TAG_ID' => 'GT-TEST789'])), 'gtag', [], 'gtag', 'GT-TEST789'],
     'Google Ads AW- fallback'      => [$make(variant($src, ['HM_GOOGLE_TAG_ID' => 'AW-TEST000'])), 'gtag', [], 'gtag', 'AW-TEST000'],
@@ -158,9 +160,12 @@ PHP
 
     if ($rendered === 'gtm') {
         check('GTM container in head', str_contains($head, 'googletagmanager.com/gtm.js'));
-        check('container ID passed', str_contains($head, "'GTM-TEST123'"));
+        $cid = hm_gtm_valid_gtm();
+        check('container ID passed', str_contains($head, "'$cid'"));
+        check('restricted flag matches prefix', ($ctx['hm_restricted'] ?? null) === hm_gtm_container_restricted());
+        check('context carries container ID', ($ctx['hm_container_id'] ?? '') === $cid);
         check('no direct gtag.js in gtm mode', !str_contains($head, 'gtag/js?id='));
-        check('noscript iframe in body', str_contains($body, 'ns.html?id=GTM-TEST123'));
+        check('noscript iframe in body', str_contains($body, 'ns.html?id=' . hm_gtm_valid_gtm()));
     } else {
         check('gtag.js loaded with resolved ID', str_contains($head, 'gtag/js?id=' . $tagId));
         check('gtag config called with ID', str_contains($head, "gtag('config', '{$tagId}')"));

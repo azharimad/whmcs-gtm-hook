@@ -11,20 +11,35 @@ IDs live in one place (this file), and the GA4 Measurement ID is pushed into the
 - Staff sessions (including *Login as Owner*) are never tracked
 - Server-side de-duplication: refreshing the order-complete page does not push a second purchase
 - Automatic `gtag.js` fallback when no container is configured — accepts `G-`, `GT-` or `AW-`
+- Accepts every container ID flavour Google now hands out (`GTM-`, `GT-`, `AW-`, `G-`, `DC-`), including containers auto-created by the Google tag → Tag Manager unification
 - Format-validated IDs, and placeholder IDs are treated as "not configured", so the file is safe to deploy before your IDs exist
 
 ## Which ID is which
 
 | Prefix | What it is | Where you get it | Goes into |
 |---|---|---|---|
-| `GTM-XXXXXXX` | Tag Manager container | GTM → **Admin → Install Google Tag Manager** | `HM_GTM_CONTAINER_ID` |
-| `G-XXXXXXXXXX` | GA4 Measurement ID (data stream) | GA4 → **Admin → Data Streams →** your web stream | `HM_GA4_MEASUREMENT_ID` |
-| `GT-XXXXXXXX` | Google tag (one tag, multiple destinations: GA4 + Ads) | GA4/Ads → **Admin → Google tag** / GTM container settings | `HM_GOOGLE_TAG_ID` |
-| `AW-XXXXXXXXXX` | Google Ads conversion ID | Google Ads → **Goals → Conversions →** tag setup | `HM_GOOGLE_TAG_ID` |
-| `GTM-` ≠ `GT-` | Different products | — | — |
-| `UA-XXXXX-X` | Universal Analytics (sunset in 2023) | — | not supported |
+| `GTM-XXXXXXX` | Full Tag Manager container, all tag types allowed | GTM → **Admin → Install Google Tag Manager** | `HM_GTM_CONTAINER_ID` |
+| `GT-XXXXXXXX` | Google tag (one tag, multiple destinations: GA4 + Ads) — also a Google-only container ID | GA4/Ads → **Admin → Google tag** | `HM_GTM_CONTAINER_ID` (container) or `HM_GOOGLE_TAG_ID` (gtag.js) |
+| `AW-XXXXXXXXXX` | Google Ads conversion ID | Google Ads → **Goals → Conversions** | same as above |
+| `G-XXXXXXXXXX` | GA4 Measurement ID (data stream) | GA4 → **Admin → Data Streams** | `HM_GA4_MEASUREMENT_ID` |
+| `UA-XXXXX-X` | Universal Analytics (sunset 2023) | — | not supported |
 
-`AW-` alone does **not** send data to Analytics. If the only IDs you have are `AW-…` and `GT-…`, you still need a GA4 property (`G-…`) for Analytics reports, or use the `GT-` tag with a GA4 destination attached.
+`AW-` alone does **not** send data to Analytics. If the only IDs you have are `AW-…` and `GT-…`, prefer `GT-…` — it is the unified tag and forwards events to every destination attached to it.
+
+## Google tag → Tag Manager unification (what changed in 2026)
+
+Google upgraded standalone Google tags into full Tag Manager containers. Those containers show up with a **product-prefixed ID** (`AW-…`, `GT-…`) rather than `GTM-…`, and a banner: *"Google tag has been upgraded to a Tag Manager container."*
+
+The prefix of the ID you load decides what the container may run ([Google's rule](https://support.google.com/tagmanager/answer/17070049)):
+
+| ID used to load | Allowed tags |
+|---|---|
+| `GTM-…` | Everything: Google tags, third-party tags (Meta, TikTok), custom HTML/JS |
+| `GT-…` / `AW-…` / `G-…` | **Google-only** — no third-party or custom scripts |
+
+So: if your container list only offers `AW-…` and `GT-…`, you can track GA4 + Ads fine, but you cannot add Meta Pixel or custom HTML until you create a real `GTM-…` container (**Admin → Create Container**) and load that ID instead.
+
+This hook handles both: it loads whatever container ID you give it through `gtm.js`, and exposes `hm_restricted` in the data layer so you can see which mode the page is in.
 
 ## Install
 
@@ -36,9 +51,9 @@ Configure at the top of the file:
 
 ```php
 const HM_GTM_MODE           = 'auto';
-const HM_GTM_CONTAINER_ID   = 'GTM-XXXXXXX';   // <- container
-const HM_GA4_MEASUREMENT_ID = 'G-XXXXXXXXXX';  // <- GA4 measurement ID
-const HM_GOOGLE_TAG_ID      = '';              // optional: GT-... / AW-...
+const HM_GTM_CONTAINER_ID   = 'GTM-XXXXXXX';   // or GT-… / AW-… if that is all you have
+const HM_GA4_MEASUREMENT_ID = 'G-XXXXXXXXXX';  // used by the gtag.js fallback
+const HM_GOOGLE_TAG_ID      = '';              // optional: GT-… / AW-… for gtag.js fallback
 ```
 
 No template cache flush needed — hooks are read on the next request.
@@ -47,10 +62,10 @@ No template cache flush needed — hooks are read on the next request.
 
 | `HM_GTM_MODE` | Behaviour |
 |---|---|
-| `auto` (default) | GTM if a valid container exists, otherwise `gtag.js` if a `G-` / `GT-` / `AW-` ID exists, otherwise off |
-| `gtm` | GTM container only. GA4 lives as a tag inside the container. |
-| `gtag` | `gtag.js` loaded directly, GTM bypassed. Quick GA4-only (or Ads-only) setup. |
-| `off` | Nothing is rendered. |
+| `auto` (default) | Container if `HM_GTM_CONTAINER_ID` is valid (any prefix), otherwise `gtag.js` if a `G-` / `GT-` / `AW-` ID exists, otherwise off |
+| `gtm` | Container via `gtm.js` (tags managed inside the container) |
+| `gtag` | `gtag.js` loaded directly, no container — the supported path for a plain Google tag |
+| `off` | Nothing is rendered |
 
 In `gtag` mode `G-` wins over `GT-`/`AW-`, so an explicit GA4 stream is never silently replaced. Set only one of them to avoid double counting.
 
@@ -61,7 +76,9 @@ Before the container loads, the hook pushes a context object into the data layer
 ```js
 window.dataLayer.push({
   "hm_ga4_id": "G-XXXXXXXXXX",     // HM_GA4_MEASUREMENT_ID
-  "hm_google_tag_id": "",          // HM_GOOGLE_TAG_ID (GT- / AW-)
+  "hm_google_tag_id": "",          // HM_GOOGLE_TAG_ID
+  "hm_container_id": "GTM-XXXXXXX",// container actually loaded
+  "hm_restricted": false,          // true when loaded with a product-prefixed ID
   "hm_channel": "gtm",             // gtm | gtag
   "hm_page": "viewinvoice",        // WHMCS template file
   "hm_logged_in": true
@@ -127,16 +144,18 @@ Runs without a WHMCS installation (PHP 8.1+), stubbing `add_hook()`, `localAPI()
 php tests/run.php
 ```
 
-10 suites / 138 assertions:
+12 suites / 184 assertions:
 
 | Suite | Checks |
 |---|---|
 | dummy IDs (auto → off) | nothing rendered at all |
 | GTM only | container, ID, noscript, no direct gtag |
 | GTM + GA4 linked | container + context exposes `G-` |
+| Google tag container `GT-` | loaded as container, `hm_restricted = true` |
+| Ads container `AW-` | loaded as container, `hm_restricted = true` |
 | GA4 only | `gtag.js` fallback with `G-` |
-| Google tag `GT-` | `gtag.js` fallback with `GT-` |
-| Google Ads `AW-` | `gtag.js` fallback with `AW-` |
+| Google tag `GT-` (fallback) | `gtag.js` fallback with `GT-` |
+| Google Ads `AW-` (fallback) | `gtag.js` fallback with `AW-` |
 | GA4 wins over `GT-` | explicit `G-` preferred |
 | `mode=off` | nothing rendered despite valid IDs |
 | staff session | nothing rendered |
@@ -156,8 +175,8 @@ window.dataLayer.filter(e => e.event === 'purchase')
 - Browser-side tracking cannot see payments that never return to WHMCS (e.g. some offline gateways).
 - Custom themes that drop `{$headeroutput}` / `{$footeroutput}` will lose the body output; the head hook is the safe one.
 - Consent defaults are static. To react to a banner, push `gtag('consent', 'update', {...})` from your consent tool inside the container.
+- Product-prefixed containers (`GT-`, `AW-`) are Google-only. Third-party tags need a `GTM-` container.
 - The context push happens before the container starts, so `hm_page` / `hm_logged_in` are available to tags on the first page view; they are overwritten on each navigation.
-- `GT-` / `AW-` fallback loads Google's `gtag.js` directly. If that Google tag has a GA4 destination attached, everything lands in GA4 under that property — but the `G-` Measurement ID field in the context stays empty unless you also set `HM_GA4_MEASUREMENT_ID`.
 
 ## License
 
@@ -167,4 +186,4 @@ MIT — see [LICENSE](LICENSE).
 
 ### Ringkasan (ID)
 
-Satu file hook untuk GTM + GA4 di WHMCS. `GTM-` = container, `G-` = GA4 measurement ID, `GT-`/`AW-` = Google tag payung (opsional, dipakai saat fallback `gtag.js`). Measurement ID ikut di-push ke dataLayer sebagai `hm_ga4_id`, jadi tag di GTM cukup pakai `{{DL - hm_ga4_id}}`. Mode `auto` pilih GTM kalau container valid, atau `gtag.js` kalau cuma ada `G-`/`GT-`/`AW-`. Event `purchase` menyesuaikan bentuk output per mode, plus consent mode, skip staff, dan anti dobel saat refresh. Tes lokal: `php tests/run.php` (10 suite, 138 assertion).
+`GTM-` = container penuh (semua tag), `GT-`/`AW-` = container hasil upgrade Google tag yang cuma boleh tag Google, `G-` = Measurement ID GA4. Sejak 2026 Google meng-upgrade Google tag jadi container, jadi ID container bisa berprefix produk — hook ini menerima semuanya lewat `gtm.js`, dan menandai `hm_restricted = true` kalau prefix-nya bukan `GTM-`. Event `purchase` mengikuti bentuk output per mode, plus consent mode, skip staff, anti dobel saat refresh. Tes lokal: `php tests/run.php` (12 suite, 184 assertion).
