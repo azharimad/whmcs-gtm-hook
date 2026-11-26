@@ -10,14 +10,19 @@
  *  2. ClientAreaHeaderOutput -> GTM noscript iframe (top of body)
  *  3. ShoppingCartCheckoutCompletePage -> GA4 "purchase" (GTM atau gtag.js)
  *
- * "Saling terkait" artinya: kedua ID didefinisikan di satu tempat (file ini).
- * GA4 Measurement ID ikut di-push ke dataLayer sebagai hm_ga4_id, jadi tag
- * Google di dalam GTM bisa memakai {{DL - hm_ga4_id}} dan tidak perlu
- * mengetik Measurement ID dua kali.
+ * "Saling terkait" artinya: ID didefinisikan di satu tempat (file ini).
+ * Measurement ID GA4 ikut di-push ke dataLayer sebagai hm_ga4_id, jadi tag
+ * Google di dalam GTM bisa memakai {{DL - hm_ga4_id}}.
+ *
+ * Prefix ID yang dikenal:
+ *   GTM-  container Tag Manager          -> HM_GTM_CONTAINER_ID
+ *   G-    GA4 measurement ID             -> HM_GA4_MEASUREMENT_ID
+ *   GT-   Google tag payung (GA4 + Ads)  -> HM_GOOGLE_TAG_ID
+ *   AW-   Google Ads conversion ID       -> HM_GOOGLE_TAG_ID
  *
  * Mode:
- *   auto -> pakai GTM kalau Container ID valid; kalau tidak, pakai gtag.js
- *           kalau Measurement ID valid; kalau dua-duanya kosong -> off.
+ *   auto -> GTM kalau container valid; kalau tidak, gtag.js kalau ada
+ *           G- / GT- / AW-; kalau tidak ada apa-apa -> off.
  *   gtm  -> hanya container GTM (tag GA4 dikelola di dalam GTM).
  *   gtag -> gtag.js langsung, tanpa GTM (fallback / setup cepat).
  *   off  -> tidak tracking sama sekali.
@@ -31,8 +36,9 @@ if (!defined('WHMCS')) {
 /* ============================ KONFIGURASI ================================= */
 
 const HM_GTM_MODE             = 'auto';          // auto | gtm | gtag | off
-const HM_GTM_CONTAINER_ID     = 'GTM-XXXXXXX';   // GTM container
-const HM_GA4_MEASUREMENT_ID   = 'G-XXXXXXXXXX';  // GA4 measurement ID
+const HM_GTM_CONTAINER_ID     = 'GTM-XXXXXXX';   // Admin > Install Google Tag Manager
+const HM_GA4_MEASUREMENT_ID   = 'G-XXXXXXXXXX';  // GA4 > Admin > Data Streams
+const HM_GOOGLE_TAG_ID        = '';              // opsional: GT-... atau AW-...
 
 const HM_GTM_SEND_PURCHASE    = true;             // event purchase di order-complete
 const HM_GTM_CONSENT_DEFAULT  = 'granted';        // granted | denied
@@ -59,6 +65,23 @@ function hm_gtm_valid_ga4(): string
 }
 
 /**
+ * Google tag payung: GT- (GA4 + Ads), AW- (Ads saja), DC- (Floodlight).
+ */
+function hm_gtm_valid_google_tag(): string
+{
+    $id = trim(HM_GOOGLE_TAG_ID);
+    return preg_match('/^(GT|AW|DC)-[A-Z0-9]{4,}$/i', $id) ? strtoupper($id) : '';
+}
+
+/**
+ * ID untuk mode gtag: G- (eksplisit) lebih dulu, GT-/AW- sebagai cadangan.
+ */
+function hm_gtm_gtag_id(): string
+{
+    return hm_gtm_valid_ga4() ?: hm_gtm_valid_google_tag();
+}
+
+/**
  * Mode efektif: 'gtm' | 'gtag' | 'off'.
  */
 function hm_gtm_mode(): string
@@ -70,7 +93,7 @@ function hm_gtm_mode(): string
 
     $declared = strtolower(trim(HM_GTM_MODE));
     $gtm      = hm_gtm_valid_gtm();
-    $ga4      = hm_gtm_valid_ga4();
+    $direct   = hm_gtm_gtag_id();
 
     if ($declared === 'off') {
         return $mode = 'off';
@@ -79,14 +102,14 @@ function hm_gtm_mode(): string
         return $mode = $gtm !== '' ? 'gtm' : 'off';
     }
     if ($declared === 'gtag') {
-        return $mode = $ga4 !== '' ? 'gtag' : 'off';
+        return $mode = $direct !== '' ? 'gtag' : 'off';
     }
 
-    // auto
+    // auto: container menang, lalu gtag.js langsung.
     if ($gtm !== '') {
         return $mode = 'gtm';
     }
-    if ($ga4 !== '') {
+    if ($direct !== '') {
         return $mode = 'gtag';
     }
     return $mode = 'off';
@@ -121,10 +144,11 @@ function hm_gtm_trackable(): bool
 function hm_gtm_context(array $vars): array
 {
     return [
-        'hm_ga4_id'    => hm_gtm_valid_ga4(),
-        'hm_channel'   => hm_gtm_mode(),
-        'hm_page'      => (string) ($vars['templatefile'] ?? $vars['filename'] ?? ''),
-        'hm_logged_in' => !empty($_SESSION['uid']),
+        'hm_ga4_id'        => hm_gtm_valid_ga4(),
+        'hm_google_tag_id' => hm_gtm_valid_google_tag(),
+        'hm_channel'       => hm_gtm_mode(),
+        'hm_page'          => (string) ($vars['templatefile'] ?? $vars['filename'] ?? ''),
+        'hm_logged_in'     => !empty($_SESSION['uid']),
     ];
 }
 
@@ -146,7 +170,6 @@ add_hook('ClientAreaHeadOutput', 1, function ($vars) {
     $mode    = hm_gtm_mode();
     $consent = HM_GTM_CONSENT_DEFAULT === 'denied' ? 'denied' : 'granted';
     $context = hm_gtm_json(hm_gtm_context(is_array($vars) ? $vars : []));
-    $ga4     = hm_gtm_valid_ga4();
     $gtm     = hm_gtm_valid_gtm();
 
     $out = "<!-- WHMCS tracking: consent + context -->\n"
@@ -174,10 +197,12 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 HTML;
     }
 
-    // mode gtag: GA4 dipasang langsung, GTM dilewati.
+    // mode gtag: GA4 / Google tag dipasang langsung, GTM dilewati.
+    $tagId = hm_gtm_gtag_id();
+
     return $out
-        . '<script async src="https://www.googletagmanager.com/gtag/js?id=' . rawurlencode($ga4) . '"></script>' . "\n"
-        . "<script>gtag('js', new Date());gtag('config', '{$ga4}');</script>\n";
+        . '<script async src="https://www.googletagmanager.com/gtag/js?id=' . rawurlencode($tagId) . '"></script>' . "\n"
+        . "<script>gtag('js', new Date());gtag('config', '{$tagId}');</script>\n";
 });
 
 /* =================== 2. NOSCRIPT GTM (TOP OF BODY) ======================== */
