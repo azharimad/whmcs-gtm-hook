@@ -41,6 +41,20 @@ So: if your container list only offers `AW-…` and `GT-…`, you can track GA4 
 
 This hook handles both: it loads whatever container ID you give it through `gtm.js`, and exposes `hm_restricted` in the data layer so you can see which mode the page is in.
 
+## Making the container unrestricted (stop being Google-only)
+
+The restriction comes from the ID prefix, not from a setting you can toggle. To run third-party tags you need a container loaded with a `GTM-` ID:
+
+1. Open [tagmanager.google.com](https://tagmanager.google.com/) → pick the account → **Admin → Create Container** (do not use the container that the Google tag upgrade created).
+2. Name it (e.g. `SORABIT Web`), platform **Web**, **Create**. The new container gets a `GTM-XXXXXXX` ID.
+3. In that container, create your tags: **Google Analytics → Google Tag** (Measurement ID `G-…`, trigger All Pages) and **GA4 Event** `purchase` (Ecommerce: Data Layer, trigger Custom Event `purchase`).
+4. **Submit → Publish** the version. Tags do nothing until a version is published.
+5. Put the new ID in `HM_GTM_CONTAINER_ID = 'GTM-XXXXXXX'`. The hook then loads the unrestricted container and stops loading the old `GT-`/`AW-` one — never run both.
+6. Remove any leftover `gtag.js` / `gtm.js` snippet pasted manually into your theme, otherwise events are counted twice.
+7. Verify: GTM **Preview**, then **Tag Assistant** shows the `GTM-` ID; GA4 **DebugView** shows `purchase`.
+
+If you only ever need Google tags (GA4, Ads, Floodlight), the `GT-` container is fine — the restriction only blocks third-party and custom HTML tags.
+
 ## Install
 
 ```bash
